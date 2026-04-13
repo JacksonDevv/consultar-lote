@@ -17,7 +17,6 @@ const COLUMN_MAP = {
 };
 
 export default function SAPBatchTracker() {
-  // Dados
   const [dataZSD036, setDataZSD036] = useState([]);
   const [dataMB51, setDataMB51] = useState([]);
   const [szInput, setSzInput] = useState('');
@@ -25,7 +24,6 @@ export default function SAPBatchTracker() {
   const [email, setEmail] = useState('');
   const [saveEmail, setSaveEmail] = useState(false);
 
-  // UI
   const [isScanning, setIsScanning] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState(null);
@@ -49,10 +47,8 @@ export default function SAPBatchTracker() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // --- LOGICA DO SCANNER (SÊNIOR APPROACH) ---
   useEffect(() => {
     if (isScanning) {
-      // Pequeno delay para garantir que o HTML do modal foi renderizado
       const timeout = setTimeout(() => {
         const scanner = new Html5QrcodeScanner("reader", { 
           fps: 10, 
@@ -65,11 +61,8 @@ export default function SAPBatchTracker() {
           setIsScanning(false);
           scanner.clear();
           showToast("Código lido com sucesso!");
-          // Dispara o rastreio automaticamente após ler
           setTimeout(() => executeTrack(decodedText), 500);
-        }, (error) => {
-          // Erros de scan são ignorados para evitar spam de logs
-        });
+        }, () => {});
 
         scannerRef.current = scanner;
       }, 100);
@@ -94,8 +87,16 @@ export default function SAPBatchTracker() {
       try {
         const bstr = evt.target.result;
         const wb = XLSX.read(bstr, { type: 'binary' });
-        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-        
+
+        const data = XLSX.utils.sheet_to_json(
+          wb.Sheets[wb.SheetNames[0]],
+          { defval: '' } // 🔥 CORREÇÃO IMPORTANTE
+        );
+
+        // 🔍 DEBUG (pode remover depois)
+        console.log(type, 'linhas:', data.length);
+        console.log('colunas:', Object.keys(data[0] || {}));
+
         if (type === 'ZSD036') setDataZSD036(data);
         else setDataMB51(data);
 
@@ -110,19 +111,31 @@ export default function SAPBatchTracker() {
 
   const executeTrack = (value) => {
     const searchVal = value || szInput;
+
     if (!searchVal) return showToast("Digite ou escaneie a SZ", "error");
-    if (!dataZSD036.length || !dataMB51.length) return showToast("Carregue as duas planilhas!", "error");
+
+    // 🔥 CORREÇÃO PRINCIPAL
+    if (dataZSD036.length === 0 || dataMB51.length === 0) {
+      return showToast("Carregue as duas planilhas!", "error");
+    }
+
+    if (!Array.isArray(dataZSD036) || !Array.isArray(dataMB51)) {
+      return showToast("Erro nos dados carregados", "error");
+    }
 
     setIsProcessing(true);
 
     try {
       const szRecord = dataZSD036.find(row => 
-        String(row[COLUMN_MAP.ZSD036.SZ] || '').trim().toLowerCase() === searchVal.trim().toLowerCase()
+        String(row[COLUMN_MAP.ZSD036.SZ] || '')
+          .trim()
+          .toLowerCase() === searchVal.trim().toLowerCase()
       );
 
       if (!szRecord) throw new Error("SZ não encontrada na ZSD036");
 
       const batchId = szRecord[COLUMN_MAP.ZSD036.LOTE];
+
       const movements = dataMB51.filter(row => 
         String(row[COLUMN_MAP.MB51.LOTE] || '').trim() === String(batchId || '').trim()
       );
@@ -136,12 +149,18 @@ export default function SAPBatchTracker() {
       });
 
       const latest = sorted[0];
+
       setResult({
-        sz: searchVal, lote: batchId, peso: latest[COLUMN_MAP.MB51.PESO],
-        transacao: latest[COLUMN_MAP.MB51.TRANSACAO], data: latest[COLUMN_MAP.MB51.DATA],
-        hora: latest[COLUMN_MAP.MB51.HORA], usuario: latest[COLUMN_MAP.MB51.USUARIO],
-        cabecalho: latest[COLUMN_MAP.MB51.CABECHALHO]
+        sz: searchVal,
+        lote: batchId,
+        peso: latest[COLUMN_MAP.MB51.PESO],
+        transacao: latest[COLUMN_MAP.MB51.TRANSACAO],
+        data: latest[COLUMN_MAP.MB51.DATA],
+        hora: latest[COLUMN_MAP.MB51.HORA],
+        usuario: latest[COLUMN_MAP.MB51.USUARIO],
+        cabecalho: latest[COLUMN_MAP.MB51.CABECALHO]
       });
+
     } catch (err) {
       showToast(err.message, "error");
     } finally {
@@ -151,7 +170,6 @@ export default function SAPBatchTracker() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 p-4 md:p-8 font-sans">
-      {/* HEADER */}
       <header className="max-w-6xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border-b-4 border-blue-600 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 p-2 rounded-lg text-white"><Search size={24}/></div>
@@ -161,8 +179,8 @@ export default function SAPBatchTracker() {
       </header>
 
       <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* COLUNA ESQUERDA */}
         <div className="lg:col-span-4 space-y-6">
+
           <section className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <h2 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><FileText size={14}/> Dados SAP</h2>
             <div className="space-y-4">
@@ -209,7 +227,6 @@ export default function SAPBatchTracker() {
           </section>
         </div>
 
-        {/* COLUNA DIREITA */}
         <div className="lg:col-span-8">
           {!result ? (
             <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-300 p-12 text-center text-slate-400">
@@ -221,8 +238,13 @@ export default function SAPBatchTracker() {
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-slate-50 p-4 border-b flex justify-between items-center">
                   <h3 className="font-bold text-slate-700 flex items-center gap-2"><CheckCircle2 className="text-blue-600" size={18}/> Resultado</h3>
-                  <button onClick={() => {setResult(null); setSzInput('')}} className="text-xs text-blue-600 font-bold hover:underline">Nova Consulta</button>
+                  <button onClick={() => {
+                    setResult(null);
+                    setSzInput('');
+                    setIsProcessing(false);
+                  }} className="text-xs text-blue-600 font-bold hover:underline">Nova Consulta</button>
                 </div>
+
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Detail label="SZ" value={result.sz} />
@@ -237,7 +259,7 @@ export default function SAPBatchTracker() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h3 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><Mail size={14}/> Enviar Notificação</h3>
                 <div className="flex flex-col md:flex-row gap-4 items-end">
@@ -259,7 +281,6 @@ export default function SAPBatchTracker() {
         </div>
       </main>
 
-      {/* MODAL SCANNER */}
       {isScanning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl overflow-hidden w-full max-w-md relative">
@@ -274,7 +295,6 @@ export default function SAPBatchTracker() {
         </div>
       )}
 
-      {/* TOAST */}
       {toast && (
         <div className={`fixed bottom-8 right-8 p-4 rounded-lg shadow-lg text-white flex items-center gap-3 z-50 animate-in slide-in-from-right-full ${toast.type === 'error' ? 'bg-red-500' : 'bg-green-600'}`}>
           {toast.type === 'error' ? <AlertCircle size={20}/> : <CheckCircle2 size={20}/>}
