@@ -6,13 +6,28 @@ import {
   FileText, AlertCircle, Camera, X 
 } from 'lucide-react';
 
-// Configuração de colunas - Ajuste aqui se os nomes no Excel mudarem
+// 🔥 NORMALIZAÇÃO DE COLUNAS (NÃO ALTERA LAYOUT)
+const normalizeKeys = (data) => {
+  return data.map(row => {
+    const newRow = {};
+    Object.keys(row).forEach(key => {
+      const cleanKey = key.trim().toLowerCase();
+      newRow[cleanKey] = row[key];
+    });
+    return newRow;
+  });
+};
+
 const COLUMN_MAP = {
-  ZSD036: { SZ: 'SZ', LOTE: 'Lote' },
+  ZSD036: { SZ: 'sz', LOTE: 'lote' },
   MB51: { 
-    LOTE: 'Lote', PESO: 'Peso', TRANSACAO: 'Tipo Movimento', 
-    DATA: 'Data Lançamento', HORA: 'Hora Lançamento', 
-    USUARIO: 'Usuário', CABECALHO: 'Documento' 
+    LOTE: 'lote',
+    PESO: 'peso',
+    TRANSACAO: 'tipo movimento',
+    DATA: 'data lançamento',
+    HORA: 'hora lançamento',
+    USUARIO: 'usuário',
+    CABECALHO: 'documento'
   }
 };
 
@@ -69,9 +84,7 @@ export default function SAPBatchTracker() {
 
       return () => {
         clearTimeout(timeout);
-        if (scannerRef.current) {
-          scannerRef.current.clear();
-        }
+        if (scannerRef.current) scannerRef.current.clear();
       };
     }
   }, [isScanning]);
@@ -85,17 +98,15 @@ export default function SAPBatchTracker() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(evt.target.result, { type: 'binary' });
 
-        const data = XLSX.utils.sheet_to_json(
+        let data = XLSX.utils.sheet_to_json(
           wb.Sheets[wb.SheetNames[0]],
-          { defval: '' } // 🔥 CORREÇÃO IMPORTANTE
+          { defval: '' }
         );
 
-        // 🔍 DEBUG (pode remover depois)
-        console.log(type, 'linhas:', data.length);
-        console.log('colunas:', Object.keys(data[0] || {}));
+        // 🔥 NORMALIZAÇÃO (resolve problema real)
+        data = normalizeKeys(data);
 
         if (type === 'ZSD036') setDataZSD036(data);
         else setDataMB51(data);
@@ -106,6 +117,7 @@ export default function SAPBatchTracker() {
         setUploads(prev => ({ ...prev, [type]: { ...prev[type], status: 'error' } }));
       }
     };
+
     reader.readAsBinaryString(file);
   };
 
@@ -114,13 +126,8 @@ export default function SAPBatchTracker() {
 
     if (!searchVal) return showToast("Digite ou escaneie a SZ", "error");
 
-    // 🔥 CORREÇÃO PRINCIPAL
     if (dataZSD036.length === 0 || dataMB51.length === 0) {
       return showToast("Carregue as duas planilhas!", "error");
-    }
-
-    if (!Array.isArray(dataZSD036) || !Array.isArray(dataMB51)) {
-      return showToast("Erro nos dados carregados", "error");
     }
 
     setIsProcessing(true);
