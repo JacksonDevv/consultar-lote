@@ -155,9 +155,9 @@ export default function SAPBatchTracker() {
       <header className="max-w-6xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border-b-4 border-blue-600 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 p-2 rounded-lg text-white"><Search size={24}/></div>
-          <h1 className="text-2xl font-bold text-slate-700">SAP <span className="text-blue-600">BatchTracker</span></h1>
+          <h1 className="text-2xl font-bold text-slate-700">Consulta aí <span className="text-blue-600">Basílio</span></h1>
         </div>
-        <span className="text-xs text-slate-400 font-medium uppercase">v1.2 Stable</span>
+        <span className="text-xs text-slate-400 font-medium uppercase">SuzanLOKO V1.</span>
       </header>
 
       <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
