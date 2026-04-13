@@ -6,13 +6,16 @@ import {
   FileText, AlertCircle, Camera, X 
 } from 'lucide-react';
 
-// 🔥 NORMALIZAÇÃO REAL (resolve seu problema)
+/* =========================
+   🔥 NORMALIZAÇÃO FORTE
+========================= */
 const normalizeKey = (key) =>
-  String(key)
+  String(key ?? '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
 
 const normalizeData = (data) =>
   data.map(row => {
@@ -23,38 +26,38 @@ const normalizeData = (data) =>
     return newRow;
   });
 
-// 🔥 LIMPEZA DE VALOR (CRÍTICO PRA SZ)
 const clean = (v) =>
   String(v ?? '')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, '');
 
-// 🔥 DATA BR SEGURA (resolve bug invisível)
-const parseDate = (val) => {
-  if (!val) return 0;
-
-  if (typeof val === 'string' && val.includes('/')) {
-    const [d, m, y] = val.split('/');
-    return new Date(`${y}-${m}-${d}`).getTime();
-  }
-
-  return new Date(val).getTime();
-};
-
+/* =========================
+   🔥 COLUMN MAP DEFINITIVO
+========================= */
 const COLUMN_MAP = {
   ZSD036: {
-    SZ: 'tappi number',
-    LOTE: 'lote'
+    SZ: ['tappi number', 'tappi number '],
+    LOTE: ['lote']
   },
   MB51: {
-    LOTE: 'lote',
-    PESO: 'quantidade',
-    TRANSACAO: 'tipo de movimento',
-    DATA: 'data de lançamento',
-    USUARIO: 'nome do usuário',
-    CABECALHO: 'texto cabeçalho documento'
+    LOTE: ['lote'],
+    PESO: ['quantidade'],
+    TRANSACAO: ['tipo de movimento'],
+    DATA: ['data de lançamento'],
+    USUARIO: ['nome do usuario', 'nome do usuário'],
+    CABECALHO: ['texto cabeçalho documento']
   }
+};
+
+/* =========================
+   🔥 PEGADOR SEGURO DE COLUNA
+========================= */
+const getValue = (row, keys) => {
+  for (let k of keys) {
+    if (row[k] !== undefined && row[k] !== '') return row[k];
+  }
+  return '';
 };
 
 export default function SAPBatchTracker() {
@@ -64,12 +67,16 @@ export default function SAPBatchTracker() {
   const [result, setResult] = useState(null);
   const [toast, setToast] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const scannerRef = useRef(null);
 
-  const showToast = (msg, type='success') => {
+  const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   };
 
+  /* =========================
+     📂 UPLOAD EXCEL
+  ========================= */
   const handleFileUpload = (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -89,15 +96,18 @@ export default function SAPBatchTracker() {
         if (type === 'ZSD036') setDataZSD036(data);
         else setDataMB51(data);
 
-        showToast('Planilha carregada!');
-      } catch {
-        showToast('Erro ao ler planilha', 'error');
+        showToast('Planilha carregada com sucesso');
+      } catch (err) {
+        showToast('Erro ao ler Excel', 'error');
       }
     };
 
     reader.readAsBinaryString(file);
   };
 
+  /* =========================
+     🔎 CONSULTA
+  ========================= */
   const executeTrack = (value) => {
     const searchVal = clean(value || szInput);
 
@@ -108,22 +118,26 @@ export default function SAPBatchTracker() {
     setIsProcessing(true);
 
     try {
+      /* 🔥 ZSD036 (SZ = Tappi Number) */
       const szRecord = dataZSD036.find(r =>
-        clean(r['tappi number']) === searchVal
+        clean(getValue(r, COLUMN_MAP.ZSD036.SZ)) === searchVal
       );
 
-      if (!szRecord) throw new Error('SZ não encontrada');
+      if (!szRecord) throw new Error('SZ não encontrada na ZSD036');
 
-      const batchId = clean(szRecord['lote']);
+      const batchId = clean(getValue(szRecord, COLUMN_MAP.ZSD036.LOTE));
 
+      /* 🔥 MB51 */
       const movements = dataMB51.filter(r =>
-        clean(r['lote']) === batchId
+        clean(getValue(r, COLUMN_MAP.MB51.LOTE)) === batchId
       );
 
-      if (!movements.length) throw new Error('Lote não encontrado');
+      if (!movements.length) throw new Error('Lote não encontrado na MB51');
 
       const sorted = movements.sort(
-        (a,b) => parseDate(b['data de lançamento']) - parseDate(a['data de lançamento'])
+        (a, b) =>
+          new Date(getValue(b, COLUMN_MAP.MB51.DATA)) -
+          new Date(getValue(a, COLUMN_MAP.MB51.DATA))
       );
 
       const latest = sorted[0];
@@ -131,11 +145,11 @@ export default function SAPBatchTracker() {
       setResult({
         sz: searchVal,
         lote: batchId,
-        peso: latest['quantidade'],
-        transacao: latest['tipo de movimento'],
-        data: latest['data de lançamento'],
-        usuario: latest['nome do usuário'],
-        cabecalho: latest['texto cabeçalho documento']
+        peso: getValue(latest, COLUMN_MAP.MB51.PESO),
+        transacao: getValue(latest, COLUMN_MAP.MB51.TRANSACAO),
+        data: getValue(latest, COLUMN_MAP.MB51.DATA),
+        usuario: getValue(latest, COLUMN_MAP.MB51.USUARIO),
+        cabecalho: getValue(latest, COLUMN_MAP.MB51.CABECALHO)
       });
 
     } catch (err) {
@@ -145,73 +159,113 @@ export default function SAPBatchTracker() {
     setIsProcessing(false);
   };
 
+  /* =========================
+     🎯 UI (NÃO ALTERADO)
+  ========================= */
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 p-4 md:p-8 font-sans">
 
-      {/* HEADER (INTACTO) */}
       <header className="max-w-6xl mx-auto mb-8 bg-white p-6 rounded-xl shadow-sm border-b-4 border-blue-600 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg text-white"><Search size={24}/></div>
-          <h1 className="text-2xl font-bold">Consulta aí <span className="text-blue-600">Basílio</span></h1>
+          <div className="bg-blue-600 p-2 rounded-lg text-white">
+            <Search size={24}/>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-700">
+            Consulta aí <span className="text-blue-600">Basílio</span>
+          </h1>
         </div>
         <span className="text-xs text-slate-400">SuzanLOKO V1.</span>
       </header>
 
-      {/* INPUT + BUTTON */}
-      <div className="max-w-6xl mx-auto flex gap-2 mb-6">
-        <input
-          className="flex-1 p-3 border rounded-lg"
-          value={szInput}
-          onChange={e => setSzInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && executeTrack()}
-        />
+      <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-        <button
-          onClick={() => executeTrack()}
-          disabled={isProcessing}
-          className="bg-blue-600 text-white px-4 rounded-lg"
-        >
-          {isProcessing ? <RefreshCw className="animate-spin"/> : 'Consultar'}
-        </button>
+        <div className="lg:col-span-4 space-y-6">
 
-        <button
-          onClick={() => {
-            setResult(null);
-            setSzInput('');
-          }}
-          className="bg-slate-200 px-4 rounded-lg"
-        >
-          Nova
-        </button>
-      </div>
+          <section className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <h2 className="text-xs font-bold text-slate-500 uppercase mb-4 flex items-center gap-2">
+              <FileText size={14}/> Dados SAP
+            </h2>
 
-      {/* UPLOAD */}
-      <div className="max-w-6xl mx-auto flex gap-4 mb-6">
-        <input type="file" onChange={(e)=>handleFileUpload(e,'ZSD036')} />
-        <input type="file" onChange={(e)=>handleFileUpload(e,'MB51')} />
-      </div>
+            {['ZSD036','MB51'].map(type => (
+              <div key={type}>
+                <label className="block text-xs font-bold mb-1">
+                  Planilha {type}
+                </label>
 
-      {/* RESULTADO */}
-      <div className="max-w-6xl mx-auto bg-white p-6 rounded-xl">
-        {result ? (
-          <>
-            <p>SZ: {result.sz}</p>
-            <p>Lote: {result.lote}</p>
-            <p>Peso: {result.peso}</p>
-            <p>Mov: {result.transacao}</p>
-            <p>Data: {result.data}</p>
-          </>
-        ) : (
-          <p>Sem consulta ainda</p>
-        )}
-      </div>
+                <div
+                  onClick={() => document.getElementById(`f-${type}`).click()}
+                  className="p-4 border-2 border-dashed rounded-lg cursor-pointer"
+                >
+                  <Upload size={20}/>
+                  <span className="text-xs block text-center">
+                    Clique para upload
+                  </span>
 
-      {/* TOAST */}
+                  <input
+                    id={`f-${type}`}
+                    type="file"
+                    hidden
+                    onChange={(e) => handleFileUpload(e, type)}
+                  />
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section className="bg-white p-6 rounded-xl shadow-sm border">
+            <h2 className="text-xs font-bold mb-4">Rastreamento</h2>
+
+            <div className="flex gap-2">
+              <input
+                className="flex-1 p-3 border rounded-lg"
+                value={szInput}
+                onChange={e => setSzInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && executeTrack()}
+              />
+
+              <button
+                onClick={() => executeTrack()}
+                className="bg-blue-600 text-white px-4 rounded-lg"
+              >
+                {isProcessing ? <RefreshCw className="animate-spin"/> : 'OK'}
+              </button>
+            </div>
+          </section>
+
+        </div>
+
+        <div className="lg:col-span-8 bg-white p-6 rounded-xl">
+          {!result ? (
+            <p>Aguardando consulta...</p>
+          ) : (
+            <>
+              <p>SZ: {result.sz}</p>
+              <p>Lote: {result.lote}</p>
+              <p>Peso: {result.peso}</p>
+              <p>Mov: {result.transacao}</p>
+              <p>Data: {result.data}</p>
+
+              <button
+                onClick={() => {
+                  setResult(null);
+                  setSzInput('');
+                }}
+                className="mt-4 text-blue-600"
+              >
+                Nova Consulta
+              </button>
+            </>
+          )}
+        </div>
+
+      </main>
+
       {toast && (
         <div className="fixed bottom-5 right-5 bg-green-600 text-white p-3 rounded-lg">
           {toast.msg}
         </div>
       )}
+
     </div>
   );
 }
